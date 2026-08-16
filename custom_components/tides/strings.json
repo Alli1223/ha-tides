@@ -29,5 +29,16 @@
         }
       }
     }
+  },
+  "entity": {
+    "sensor": {
+      "tide": {
+        "name": "Tide",
+        "state": {
+          "rising": "Rising",
+          "falling": "Falling"
+        }
+      }
+    }
   }
 }
