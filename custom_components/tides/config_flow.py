@@ -33,13 +33,13 @@ def _location_schema(hass, defaults: dict[str, Any]) -> vol.Schema:
                 CONF_LATITUDE,
                 default=defaults.get(CONF_LATITUDE, hass.config.latitude),
             ): NumberSelector(
-                NumberSelectorConfig(min=-90, max=90, step=0.0001, mode=NumberSelectorMode.BOX)
+                NumberSelectorConfig(min=-90, max=90, step=0.001, mode=NumberSelectorMode.BOX)
             ),
             vol.Required(
                 CONF_LONGITUDE,
                 default=defaults.get(CONF_LONGITUDE, hass.config.longitude),
             ): NumberSelector(
-                NumberSelectorConfig(min=-180, max=180, step=0.0001, mode=NumberSelectorMode.BOX)
+                NumberSelectorConfig(min=-180, max=180, step=0.001, mode=NumberSelectorMode.BOX)
             ),
         }
     )
@@ -83,6 +83,25 @@ class TidesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return TidesOptionsFlow(config_entry)
 
 
+def _options_schema(options: dict[str, Any]) -> vol.Schema:
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_TIDAL_RANGE,
+                default=options.get(CONF_TIDAL_RANGE, DEFAULT_TIDAL_RANGE),
+            ): NumberSelector(
+                NumberSelectorConfig(min=0.1, max=15, step=0.1, mode=NumberSelectorMode.BOX)
+            ),
+            vol.Required(
+                CONF_CALIBRATION_OFFSET,
+                default=options.get(CONF_CALIBRATION_OFFSET, DEFAULT_CALIBRATION_OFFSET),
+            ): NumberSelector(
+                NumberSelectorConfig(min=-720, max=720, step=5, mode=NumberSelectorMode.BOX)
+            ),
+        }
+    )
+
+
 class TidesOptionsFlow(config_entries.OptionsFlow):
     """Handle options for the Tides integration (amplitude and calibration)."""
 
@@ -97,25 +116,6 @@ class TidesOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        options = self._config_entry.options
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    CONF_TIDAL_RANGE,
-                    default=options.get(CONF_TIDAL_RANGE, DEFAULT_TIDAL_RANGE),
-                ): NumberSelector(
-                    NumberSelectorConfig(min=0.1, max=15, step=0.1, mode=NumberSelectorMode.BOX)
-                ),
-                vol.Required(
-                    CONF_CALIBRATION_OFFSET,
-                    default=options.get(
-                        CONF_CALIBRATION_OFFSET, DEFAULT_CALIBRATION_OFFSET
-                    ),
-                ): NumberSelector(
-                    NumberSelectorConfig(
-                        min=-720, max=720, step=5, mode=NumberSelectorMode.BOX
-                    )
-                ),
-            }
+        return self.async_show_form(
+            step_id="init", data_schema=_options_schema(self._config_entry.options)
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
