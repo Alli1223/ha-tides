@@ -19,6 +19,10 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
+          # Brand icon/logo lives in the separate home-assistant/brands repo and
+          # is submitted there once the integration is ready to publish; skip it
+          # here so local CI reflects things this repo actually controls.
+          ignore: brands
 
   python:
     runs-on: ubuntu-latest
