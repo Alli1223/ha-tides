@@ -1,5 +1,6 @@
 // Tides card - a minimal wave showing current tide level, the next
-// high/low, and sunrise/sunset, all read off one timeline.
+// high/low, and sunrise/sunset, all read off one timeline. Transparent
+// background - it sits directly on the card's (themed) surface.
 
 const WIDTH = 600;
 const HEIGHT = 200;
@@ -10,18 +11,19 @@ const PLOT_TOP = PAD_TOP;
 const PLOT_BOTTOM = HEIGHT - PAD_BOTTOM;
 const AMPLITUDE_MARGIN = 1.25;
 
-const NIGHT_SKY = "#0e1330";
-const DAY_SKY = "#4f7c96";
-const WATER_TOP = "#2f9cc4";
-const WATER_BOTTOM = "#06253a";
-const WAVE_LINE = "#bdeeff";
-const SUN_COLOR = "#f7b955";
-const NOW_COLOR = "#f4fbff";
-const RISING_COLOR = "#6bd9ac";
-const FALLING_COLOR = "#e98a72";
+const SUNRISE_COLOR = "#f2b94f";
+const SUNSET_COLOR = "#7c93e8";
+const RISING_COLOR = "#2e9e64";
+const FALLING_COLOR = "#d9534f";
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text ?? "";
+  return div.innerHTML;
 }
 
 function mapX(t, windowStart, windowEnd) {
@@ -58,13 +60,12 @@ function findLocalExtrema(points) {
     const prev = points[i - 1].h;
     const cur = points[i].h;
     const next = points[i + 1].h;
-    if (cur >= prev && cur >= next && cur > points[i - 1].h - 1e-9) {
+    if (cur >= prev && cur >= next) {
       events.push({ kind: "high", point: points[i] });
     } else if (cur <= prev && cur <= next) {
       events.push({ kind: "low", point: points[i] });
     }
   }
-  // Drop duplicate/adjacent detections from flat runs.
   return events.filter((e, i) => i === 0 || e.kind !== events[i - 1].kind);
 }
 
@@ -81,38 +82,6 @@ function interpolateHeight(points, t) {
     }
   }
   return points[points.length - 1].h;
-}
-
-function buildSkyStops(sunEvents, windowStart, windowEnd) {
-  const EDGE = 0.025;
-  let isDay = true;
-  let determined = false;
-  for (const e of sunEvents) {
-    if (e.time.getTime() <= windowStart) {
-      isDay = e.kind === "sunrise";
-      determined = true;
-    }
-  }
-  if (!determined && sunEvents.length) {
-    // No event at/before the window start in our data - infer the state
-    // right before the first event we do have from its opposite.
-    isDay = sunEvents[0].kind === "sunset";
-  }
-  const stops = [];
-  const push = (frac, day) => {
-    stops.push({ offset: clamp(frac, 0, 1), color: day ? DAY_SKY : NIGHT_SKY });
-  };
-  push(0, isDay);
-  for (const e of sunEvents) {
-    const frac = (e.time.getTime() - windowStart) / (windowEnd - windowStart);
-    if (frac <= 0 || frac >= 1) continue;
-    const nowDay = e.kind === "sunrise";
-    push(frac - EDGE, !nowDay);
-    push(frac + EDGE, nowDay);
-    isDay = nowDay;
-  }
-  push(1, isDay);
-  return stops;
 }
 
 function formatTime(date, hass) {
@@ -173,7 +142,7 @@ class TidesCard extends HTMLElement {
 
   _renderMissing() {
     const root = this._shadow();
-    root.innerHTML = `<ha-card><div style="padding:16px;">Entity not found: ${this._config.entity}</div></ha-card>`;
+    root.innerHTML = `<ha-card><div style="padding:16px;">Entity not found: ${escapeHtml(this._config.entity)}</div></ha-card>`;
   }
 
   _renderCard(stateObj) {
@@ -190,6 +159,8 @@ class TidesCard extends HTMLElement {
     const windowStart = now - backMs;
     const windowEnd = windowStart + totalMs;
 
+    const flatCurve = rawCurve.map(([iso, h]) => ({ t: new Date(iso).getTime(), h }));
+
     const points = rawCurve
       .map(([iso, h]) => {
         const t = new Date(iso).getTime();
@@ -198,34 +169,22 @@ class TidesCard extends HTMLElement {
       .filter((p) => p.t >= windowStart - 3600 * 1000 && p.t <= windowEnd + 3600 * 1000)
       .sort((a, b) => a.t - b.t);
 
-    const currentHeight = interpolateHeight(
-      rawCurve.map(([iso, h]) => ({ t: new Date(iso).getTime(), h })),
-      now
-    );
+    const currentHeight = interpolateHeight(flatCurve, now);
     const state = stateObj.state;
     const trendUp = state === "rising";
 
     const wavePath = smoothPath(points);
-    const areaPath =
-      points.length > 1
-        ? `${wavePath} L ${points[points.length - 1].x.toFixed(2)} ${PLOT_BOTTOM} L ${points[0].x.toFixed(2)} ${PLOT_BOTTOM} Z`
-        : "";
 
     const extrema = findLocalExtrema(points).filter(
       (e) => e.point.t >= windowStart && e.point.t <= windowEnd
     );
 
-    const skyStops = buildSkyStops(sunEvents, windowStart, windowEnd);
-
     const sunMarkers = sunEvents
       .filter((e) => e.time.getTime() >= windowStart && e.time.getTime() <= windowEnd)
       .map((e) => {
         const t = e.time.getTime();
-        const h = interpolateHeight(
-          rawCurve.map(([iso, hh]) => ({ t: new Date(iso).getTime(), h: hh })),
-          t
-        );
-        return { x: mapX(t, windowStart, windowEnd), y: mapY(h, amplitude) };
+        const h = interpolateHeight(flatCurve, t);
+        return { x: mapX(t, windowStart, windowEnd), y: mapY(h, amplitude), kind: e.kind };
       });
 
     const axisTicks = [];
@@ -238,56 +197,56 @@ class TidesCard extends HTMLElement {
     const nowX = mapX(now, windowStart, windowEnd);
     const nowY = mapY(currentHeight, amplitude);
 
+    const nextEvent = [attrs.next_high, attrs.next_low]
+      .filter(Boolean)
+      .sort((a, b) => new Date(a.time) - new Date(b.time))[0];
+
     const title = this._config.title || stateObj.attributes.friendly_name || "";
+    const showHeader = this._config.show_name && title;
 
     const root = this._shadow();
     root.innerHTML = `
       <style>${this._css()}</style>
-      <ha-card>
+      <ha-card ${showHeader ? `header="${escapeHtml(title)}"` : ""}>
         <div class="panel">
           <svg viewBox="0 0 ${WIDTH} ${HEIGHT}" preserveAspectRatio="xMidYMid meet">
-            <defs>
-              <linearGradient id="sky" x1="0" y1="0" x2="1" y2="0">
-                ${skyStops.map((s) => `<stop offset="${s.offset}" stop-color="${s.color}" />`).join("")}
-              </linearGradient>
-              <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" stop-color="${WATER_TOP}" />
-                <stop offset="1" stop-color="${WATER_BOTTOM}" />
-              </linearGradient>
-            </defs>
-            <rect x="0" y="0" width="${WIDTH}" height="${HEIGHT}" fill="url(#sky)" />
-            ${areaPath ? `<path d="${areaPath}" fill="url(#sea)" fill-opacity="0.92" />` : ""}
             ${wavePath ? `<path class="wave-line" d="${wavePath}" fill="none" />` : ""}
-            ${sunMarkers.map((m) => `<circle class="sun-dot" cx="${m.x.toFixed(2)}" cy="${m.y.toFixed(2)}" r="5" />`).join("")}
             ${extrema
-              .map((e) => {
-                const above = e.kind === "high";
-                const labelY = above ? e.point.y - 14 : e.point.y + 22;
-                const stemY2 = above ? e.point.y - 8 : e.point.y + 8;
-                return `
-                  <line class="tick-stem" x1="${e.point.x.toFixed(2)}" y1="${e.point.y.toFixed(2)}" x2="${e.point.x.toFixed(2)}" y2="${stemY2.toFixed(2)}" />
-                  <circle class="extreme-dot" cx="${e.point.x.toFixed(2)}" cy="${e.point.y.toFixed(2)}" r="3" />
-                  <text class="halo-text label-text" x="${e.point.x.toFixed(2)}" y="${labelY.toFixed(2)}" text-anchor="middle">${formatTime(new Date(e.point.t), this._hass)}</text>
-                `;
-              })
+              .map((e) => `<circle class="extreme-dot" cx="${e.point.x.toFixed(2)}" cy="${e.point.y.toFixed(2)}" r="3.5" />`)
+              .join("")}
+            ${sunMarkers
+              .map((m) => `<circle class="sun-dot ${m.kind === "sunrise" ? "rise" : "set"}" cx="${m.x.toFixed(2)}" cy="${m.y.toFixed(2)}" r="5" />`)
               .join("")}
             ${axisTicks
               .map(
                 (tick) => `
                   <line class="axis-tick" x1="${tick.x.toFixed(2)}" y1="${PLOT_BOTTOM + 4}" x2="${tick.x.toFixed(2)}" y2="${PLOT_BOTTOM + 9}" />
-                  <text class="halo-text axis-text" x="${tick.x.toFixed(2)}" y="${HEIGHT - 8}" text-anchor="middle">${tick.label}</text>
+                  <text class="axis-text" x="${tick.x.toFixed(2)}" y="${HEIGHT - 8}" text-anchor="middle">${tick.label}</text>
                 `
               )
               .join("")}
-            <circle class="now-ring" cx="${nowX.toFixed(2)}" cy="${nowY.toFixed(2)}" r="4" />
-            <circle class="now-dot" cx="${nowX.toFixed(2)}" cy="${nowY.toFixed(2)}" r="4" />
+            <circle class="now-ring" cx="${nowX.toFixed(2)}" cy="${nowY.toFixed(2)}" r="8" />
+            <circle class="now-pulse" cx="${nowX.toFixed(2)}" cy="${nowY.toFixed(2)}" r="8" />
+            <circle class="now-dot" cx="${nowX.toFixed(2)}" cy="${nowY.toFixed(2)}" r="3.5" />
           </svg>
           <div class="overlay">
-            ${this._config.show_name && title ? `<div class="caption">${title}</div>` : ""}
-            <div class="reading">
-              <span class="height">${currentHeight.toFixed(1)}<small>m</small></span>
-              <svg class="trend ${trendUp ? "up" : "down"}" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6" /></svg>
+            <div class="now">
+              <div class="caption">Now</div>
+              <div class="reading">
+                <span class="height">${currentHeight.toFixed(1)}<small>m</small></span>
+                <svg class="trend ${trendUp ? "up" : "down"}" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6" /></svg>
+              </div>
             </div>
+            ${
+              nextEvent
+                ? `
+                  <div class="next">
+                    <div class="caption">${escapeHtml(nextEvent.kind)}</div>
+                    <div class="reading">${formatTime(new Date(nextEvent.time), this._hass)}</div>
+                  </div>
+                `
+                : ""
+            }
           </div>
         </div>
       </ha-card>
@@ -296,7 +255,7 @@ class TidesCard extends HTMLElement {
 
   _css() {
     return `
-      ha-card { overflow: hidden; padding: 0; }
+      ha-card { background: transparent; box-shadow: none; overflow: hidden; }
       .panel {
         position: relative;
         aspect-ratio: ${WIDTH} / ${HEIGHT};
@@ -304,62 +263,76 @@ class TidesCard extends HTMLElement {
       }
       svg { display: block; width: 100%; height: 100%; }
       .wave-line {
-        stroke: ${WAVE_LINE};
+        stroke: var(--tides-line-color, #2f9cc4);
         stroke-width: 2.5;
         stroke-linecap: round;
         stroke-linejoin: round;
-        filter: drop-shadow(0 0 3px rgba(189, 238, 255, 0.55));
       }
-      .sun-dot {
-        fill: ${SUN_COLOR};
-        filter: drop-shadow(0 0 4px rgba(247, 185, 85, 0.85));
-      }
-      .extreme-dot { fill: #eef6fa; }
-      .tick-stem { stroke: rgba(238, 246, 250, 0.45); stroke-width: 1.5; }
-      .axis-tick { stroke: rgba(238, 246, 250, 0.35); stroke-width: 1; }
-      .halo-text {
+      .extreme-dot { fill: var(--tides-line-color, #2f9cc4); opacity: 0.6; }
+      .sun-dot.rise { fill: ${SUNRISE_COLOR}; }
+      .sun-dot.set { fill: ${SUNSET_COLOR}; }
+      .axis-tick { stroke: var(--secondary-text-color); stroke-opacity: 0.3; stroke-width: 1; }
+      .axis-text {
+        fill: var(--secondary-text-color);
+        opacity: 0.75;
         font-family: var(--paper-font-common-base_-_font-family, inherit);
-        fill: #eef6fa;
-        paint-order: stroke fill;
-        stroke: rgba(4, 10, 26, 0.55);
-        stroke-width: 3;
-        stroke-linejoin: round;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
       }
-      .label-text { font-size: 16px; font-variant-numeric: tabular-nums; }
-      .axis-text { font-size: 12px; opacity: 0.8; font-variant-numeric: tabular-nums; }
-      .now-dot { fill: ${NOW_COLOR}; }
+      .now-dot { fill: var(--primary-color, #03a9f4); }
       .now-ring {
         fill: none;
-        stroke: ${NOW_COLOR};
+        stroke: var(--primary-color, #03a9f4);
+        stroke-width: 3;
+      }
+      .now-pulse {
+        fill: none;
+        stroke: var(--primary-color, #03a9f4);
         stroke-width: 2;
         transform-origin: center;
         transform-box: fill-box;
         animation: tide-pulse 2.6s ease-out infinite;
       }
       @keyframes tide-pulse {
-        0% { r: 4; stroke-opacity: 0.7; }
-        100% { r: 16; stroke-opacity: 0; }
+        0% { r: 8; stroke-opacity: 0.5; }
+        100% { r: 20; stroke-opacity: 0; }
       }
       @media (prefers-reduced-motion: reduce) {
-        .now-ring { animation: none; stroke-opacity: 0.35; }
+        .now-pulse { animation: none; opacity: 0; }
       }
       .overlay {
         position: absolute;
         top: 10px;
         left: 14px;
-        color: #eef6fa;
-        text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55), 0 0 2px rgba(0, 0, 0, 0.5);
+        right: 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
         pointer-events: none;
+        font-family: var(--paper-font-common-base_-_font-family, inherit);
       }
+      .next { text-align: right; }
       .caption {
         font-size: 11px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        opacity: 0.85;
+        color: var(--secondary-text-color);
         margin-bottom: 2px;
       }
       .reading { display: flex; align-items: baseline; gap: 6px; }
-      .height { font-size: 28px; font-weight: 300; font-variant-numeric: tabular-nums; line-height: 1; }
+      .next .reading {
+        font-size: 22px;
+        font-weight: 400;
+        color: var(--primary-text-color);
+        font-variant-numeric: tabular-nums;
+      }
+      .height {
+        font-size: 28px;
+        font-weight: 300;
+        color: var(--primary-text-color);
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+      }
       .height small { font-size: 14px; font-weight: 400; margin-left: 1px; }
       .trend { width: 16px; height: 16px; transform: translateY(-2px); }
       .trend path { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
