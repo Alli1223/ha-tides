@@ -1,3 +1,5 @@
+<img src="custom_components/tides/brand/icon.png" width="72" height="72" alt="">
+
 # Tides for Home Assistant
 
 A custom component that predicts high and low tides for any location and
