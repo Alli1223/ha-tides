@@ -3,10 +3,11 @@
   "name": "Tides",
   "codeowners": ["@Alli1223"],
   "config_flow": true,
+  "dependencies": ["frontend", "http"],
   "documentation": "https://github.com/Alli1223/ha-tides",
   "integration_type": "service",
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/Alli1223/ha-tides/issues",
   "requirements": ["astral>=2.2"],
-  "version": "0.1.0"
+  "version": "1.0.0"
 }

@@ -2,14 +2,37 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.typing import ConfigType
+from homeassistant.loader import async_get_integration
 
 from .const import DOMAIN
 from .coordinator import TidesDataUpdateCoordinator
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
+
+_CARD_URL = f"/{DOMAIN}/tides-card.js"
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Register the Lovelace card JS once, regardless of entry count."""
+    hass.data.setdefault(DOMAIN, {})
+    if not hass.data[DOMAIN].get("frontend_registered"):
+        integration = await async_get_integration(hass, DOMAIN)
+        card_path = Path(__file__).parent / "www" / "tides-card.js"
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(_CARD_URL, str(card_path), cache_headers=False)]
+        )
+        # Cache-bust on integration updates so browsers pick up card changes.
+        add_extra_js_url(hass, f"{_CARD_URL}?v={integration.version}")
+        hass.data[DOMAIN]["frontend_registered"] = True
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
