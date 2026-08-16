@@ -1,0 +1,33 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a tide location",
+        "description": "Tides are computed locally from sun/moon astronomy for this location — no API key needed. Accuracy is an approximation; use the calibration offset in options to nudge it to match your local tide table.",
+        "data": {
+          "name": "Name",
+          "latitude": "Latitude",
+          "longitude": "Longitude"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This location is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Tuning",
+        "data": {
+          "tidal_range": "Tidal range (metres, crest to trough)",
+          "calibration_offset": "Calibration offset (minutes)"
+        },
+        "data_description": {
+          "tidal_range": "Typical local high-to-low tide swing, used to scale the displayed wave.",
+          "calibration_offset": "Shift the predicted high/low times to match a known local tide table."
+        }
+      }
+    }
+  }
+}
