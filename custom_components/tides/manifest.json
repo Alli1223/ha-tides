@@ -3,6 +3,7 @@
   "name": "Tides",
   "codeowners": ["@Alli1223"],
   "config_flow": true,
+  "dependencies": ["frontend", "http"],
   "documentation": "https://github.com/Alli1223/ha-tides",
   "integration_type": "service",
   "iot_class": "calculated",
