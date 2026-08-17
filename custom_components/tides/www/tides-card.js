@@ -113,6 +113,8 @@ class TidesCard extends HTMLElement {
     }
     this._config = {
       show_name: true,
+      show_current: true,
+      show_next: true,
       hours_to_show: 24,
       ...config,
     };
@@ -230,15 +232,21 @@ class TidesCard extends HTMLElement {
             <circle class="now-dot" cx="${nowX.toFixed(2)}" cy="${nowY.toFixed(2)}" r="3.5" />
           </svg>
           <div class="overlay">
-            <div class="now">
-              <div class="caption">Now</div>
-              <div class="reading">
-                <span class="height">${currentHeight.toFixed(1)}<small>m</small></span>
-                <svg class="trend ${trendUp ? "up" : "down"}" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6" /></svg>
-              </div>
-            </div>
             ${
-              nextEvent
+              this._config.show_current
+                ? `
+                  <div class="now">
+                    <div class="caption">Now</div>
+                    <div class="reading">
+                      <span class="height">${currentHeight.toFixed(1)}<small>m</small></span>
+                      <svg class="trend ${trendUp ? "up" : "down"}" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6" /></svg>
+                    </div>
+                  </div>
+                `
+                : ""
+            }
+            ${
+              this._config.show_next && nextEvent
                 ? `
                   <div class="next">
                     <div class="caption">${escapeHtml(nextEvent.kind)}</div>
@@ -306,12 +314,11 @@ class TidesCard extends HTMLElement {
         left: 14px;
         right: 14px;
         display: flex;
-        justify-content: space-between;
         align-items: flex-start;
         pointer-events: none;
         font-family: var(--paper-font-common-base_-_font-family, inherit);
       }
-      .next { text-align: right; }
+      .next { text-align: right; margin-left: auto; }
       .caption {
         font-size: 11px;
         letter-spacing: 0.08em;
@@ -351,6 +358,8 @@ const SCHEMA = [
     selector: { number: { min: 12, max: 48, step: 1, mode: "slider" } },
   },
   { name: "show_name", selector: { boolean: {} } },
+  { name: "show_current", selector: { boolean: {} } },
+  { name: "show_next", selector: { boolean: {} } },
 ];
 
 const LABELS = {
@@ -358,11 +367,19 @@ const LABELS = {
   title: "Title (optional)",
   hours_to_show: "Hours to show",
   show_name: "Show name on card",
+  show_current: "Show current tide height",
+  show_next: "Show next high/low time",
 };
 
 class TidesCardEditor extends HTMLElement {
   setConfig(config) {
-    this._config = { show_name: true, hours_to_show: 24, ...config };
+    this._config = {
+      show_name: true,
+      show_current: true,
+      show_next: true,
+      hours_to_show: 24,
+      ...config,
+    };
     this._render();
   }
 
