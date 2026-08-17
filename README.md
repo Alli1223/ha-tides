@@ -68,20 +68,23 @@ entity: sensor.home_tide
 title: Home
 hours_to_show: 24
 show_name: true
+show_current: true
+show_next: true
 ```
 
 | Option | Default | Description |
 | --- | --- | --- |
 | `entity` | *required* | A Tides sensor entity |
-| `title` | entity name | Text shown on the card |
+| `title` | entity name | Text shown in the card's header bar |
 | `hours_to_show` | `24` | Width of the visible time window, in hours |
-| `show_name` | `true` | Show/hide the title caption |
+| `show_name` | `true` | Show/hide the header bar |
+| `show_current` | `true` | Show/hide the current height + trend reading (top-left) |
+| `show_next` | `true` | Show/hide the next high/low time (top-right) |
 
-The wave panel doubles as the legend: the sky band lightens for day and
-darkens for night (from real sunrise/sunset at your location), warm dots
-mark sunrise/sunset sitting right on the water line, and small time labels
-mark each high and low. The current level and trend are the only text
-overlaid on top.
+The card sits transparent on your dashboard's own theme. Small dots mark
+each high and low on the curve, colour-coded amber/indigo dots mark
+sunrise/sunset, and a ringed dot tracks the current position. Current
+height and the next high/low time are the only text, each optional.
 
 ## Entity
 
