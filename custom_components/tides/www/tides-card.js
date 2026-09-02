@@ -101,15 +101,27 @@ class TidesCard extends HTMLElement {
   }
 
   static getStubConfig(hass) {
-    const entityId = Object.keys(hass.states).find(
-      (id) => id.startsWith("sensor.") && "next_high" in hass.states[id].attributes
-    );
+    const looksLikeTideSensor = (id) => {
+      if (!id.startsWith("sensor.")) return false;
+      const attrs = hass.states[id].attributes || {};
+      return (
+        "tidal_range_m" in attrs ||
+        "next_high" in attrs ||
+        "next_low" in attrs ||
+        "curve" in attrs ||
+        id.endsWith("_tide")
+      );
+    };
+    const entityId = Object.keys(hass.states).find(looksLikeTideSensor);
     return { entity: entityId || "", hours_to_show: 24 };
   }
 
   setConfig(config) {
-    if (!config.entity) {
-      throw new Error("Please select a tide sensor entity");
+    // Only a structurally broken config is a hard error - a missing entity
+    // is handled gracefully at render time so a half-configured card shows a
+    // hint instead of Home Assistant's red "Configuration error" box.
+    if (!config || typeof config !== "object") {
+      throw new Error("Invalid tides-card configuration");
     }
     this._config = {
       show_name: true,
@@ -118,7 +130,8 @@ class TidesCard extends HTMLElement {
       hours_to_show: 24,
       ...config,
     };
-    this._built = false;
+    // Force the next hass assignment to re-render with the new options.
+    this._lastStateObj = null;
   }
 
   getCardSize() {
@@ -127,9 +140,19 @@ class TidesCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    if (!this._config) return;
+    if (!this._config.entity) {
+      this._renderNotice("Select a tide sensor entity in the card settings.");
+      return;
+    }
     const stateObj = hass.states[this._config.entity];
     if (!stateObj) {
-      this._renderMissing();
+      this._renderNotice(`Entity not found: ${this._config.entity}`);
+      return;
+    }
+    if (stateObj.state === "unavailable" || stateObj.state === "unknown") {
+      this._renderNotice(`${this._config.entity} is ${stateObj.state}`);
+      this._lastStateObj = null;
       return;
     }
     if (stateObj === this._lastStateObj) return;
@@ -142,15 +165,18 @@ class TidesCard extends HTMLElement {
     return this.shadowRoot;
   }
 
-  _renderMissing() {
+  _renderNotice(message) {
     const root = this._shadow();
-    root.innerHTML = `<ha-card><div style="padding:16px;">Entity not found: ${escapeHtml(this._config.entity)}</div></ha-card>`;
+    const title = this._config && this._config.title;
+    root.innerHTML = `<ha-card${title ? ` header="${escapeHtml(title)}"` : ""}><div style="padding:16px;color:var(--secondary-text-color);">${escapeHtml(message)}</div></ha-card>`;
   }
 
   _renderCard(stateObj) {
     const attrs = stateObj.attributes;
     const amplitude = attrs.tidal_range_m || 1.5;
-    const rawCurve = Array.isArray(attrs.curve) ? attrs.curve : [];
+    const rawCurve = (Array.isArray(attrs.curve) ? attrs.curve : []).filter(
+      (p) => Array.isArray(p) && p.length >= 2
+    );
     const sunEvents = Array.isArray(attrs.sun_events)
       ? attrs.sun_events.map((e) => ({ kind: e.kind, time: new Date(e.time) }))
       : [];
@@ -351,7 +377,12 @@ class TidesCard extends HTMLElement {
 }
 
 const SCHEMA = [
-  { name: "entity", selector: { entity: { domain: "sensor" } } },
+  {
+    name: "entity",
+    selector: {
+      entity: { domain: "sensor", filter: { integration: "tides" } },
+    },
+  },
   { name: "title", selector: { text: {} } },
   {
     name: "hours_to_show",
